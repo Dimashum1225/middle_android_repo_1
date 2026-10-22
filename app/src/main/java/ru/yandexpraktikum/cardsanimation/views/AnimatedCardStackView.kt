@@ -101,6 +101,10 @@ class AnimatedCardStackView @JvmOverloads constructor(
     }
 
     private fun handleSwipe(swipe: Swipe) {
-        android.util.Log.d("CardStack", "Swipe: $swipe")
+        when (swipe) {
+            Swipe.UP -> { isRotated = true; updateCardPositions(true) }
+            Swipe.DOWN -> { isRotated = false; updateCardPositions(true) }
+            Swipe.HORIZONTAL -> Unit
+        }
     }
 }

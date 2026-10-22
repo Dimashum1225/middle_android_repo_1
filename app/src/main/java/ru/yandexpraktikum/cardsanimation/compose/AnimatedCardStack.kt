@@ -21,7 +21,11 @@ fun AnimatedCardStack(cards: List<CardData>) {
     var order by remember(cards) { mutableStateOf(cards.indices.toList()) }
     val threshold = with(LocalDensity.current) { 40.dp.toPx() }
     val onSwipe by rememberUpdatedState<(Swipe) -> Unit>({ swipe ->
-        android.util.Log.d("CardStack", "Swipe: $swipe")
+        when (swipe) {
+            Swipe.UP -> isRotated = true
+            Swipe.DOWN -> isRotated = false
+            Swipe.HORIZONTAL -> Unit
+        }
     })
     Box(
         modifier = Modifier.fillMaxWidth().height(300.dp).clickable { isRotated = !isRotated }
