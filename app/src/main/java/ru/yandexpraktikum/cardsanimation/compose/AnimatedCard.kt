@@ -22,7 +22,9 @@ import ru.yandexpraktikum.cardsanimation.model.CardData
 fun AnimatedCard(
     cardIndex: Int,
     cardData: CardData,
-    targetRotation: Float
+    targetRotation: Float,
+    offsetX: Float = 0f,
+    offsetY: Float = 0f
 ) {
     val animatedRotation by animateFloatAsState(
         targetRotation, tween(300), label = "cardRotation"
@@ -33,6 +35,8 @@ fun AnimatedCard(
             .size(width = 100.dp, height = 160.dp)
             .graphicsLayer {
                 rotationZ = animatedRotation
+                translationX = offsetX
+                translationY = offsetY
                 transformOrigin = TransformOrigin(0.5f, 1.0f)
             },
         shape = RoundedCornerShape(16.dp),
