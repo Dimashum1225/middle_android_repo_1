@@ -1,7 +1,8 @@
 package ru.yandexpraktikum.cardsanimation.compose
 
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.runtime.getValue
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,10 +25,17 @@ fun AnimatedCard(
     cardData: CardData,
     targetRotation: Float,
     offsetX: Float = 0f,
-    offsetY: Float = 0f
+    offsetY: Float = 0f,
+    onRotationFinished: () -> Unit = {}
 ) {
     val animatedRotation by animateFloatAsState(
-        targetRotation, tween(300), label = "cardRotation"
+        targetValue = targetRotation,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        finishedListener = { onRotationFinished() },
+        label = "cardRotation"
     )
 
     Card(

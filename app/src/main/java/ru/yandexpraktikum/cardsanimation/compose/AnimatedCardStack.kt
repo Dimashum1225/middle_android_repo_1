@@ -6,7 +6,15 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -14,12 +22,18 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
-import ru.yandexpraktikum.cardsanimation.animation.*
+import ru.yandexpraktikum.cardsanimation.animation.SwapStep
+import ru.yandexpraktikum.cardsanimation.animation.Swipe
+import ru.yandexpraktikum.cardsanimation.animation.calculateCardRotation
+import ru.yandexpraktikum.cardsanimation.animation.classifySwipe
+import ru.yandexpraktikum.cardsanimation.animation.reorderCards
 import ru.yandexpraktikum.cardsanimation.model.CardData
 import kotlin.math.cos
 import kotlin.math.sin
+
+private const val DURATION_ANIMATION_MILLS = 300
 
 @Composable
 fun AnimatedCardStack(cards: List<CardData>) {
@@ -27,6 +41,7 @@ fun AnimatedCardStack(cards: List<CardData>) {
     var isRotated by remember(cards) { mutableStateOf(false) }
     var busy by remember(cards) { mutableStateOf(false) }
     var step by remember(cards) { mutableStateOf(SwapStep.IDLE) }
+    var pendingRotations by remember(cards) { mutableStateOf(emptySet<Int>()) }
     val movement = remember(cards) { Animatable(0f) }
     val scope = rememberCoroutineScope()
     val density = LocalDensity.current
@@ -41,16 +56,23 @@ fun AnimatedCardStack(cards: List<CardData>) {
                     try {
                         if (swipe == Swipe.HORIZONTAL) {
                             step = SwapStep.MOVE_OUT
-                            movement.animateTo(1f, tween(300))
+                            movement.animateTo(1f, tween(DURATION_ANIMATION_MILLS))
                             step = SwapStep.MOVE_TO_TOP
-                            movement.animateTo(0f, tween(300))
+                            movement.animateTo(0f, tween(DURATION_ANIMATION_MILLS))
                             step = SwapStep.SETTLE
+                            pendingRotations = order.toSet()
                             order = reorderCards(order)
                         } else {
-                            isRotated = swipe == Swipe.UP
+                            val expanded = swipe == Swipe.UP
+                            pendingRotations = order.filterIndexed { index, _ ->
+                                calculateCardRotation(index, order.size, isRotated) !=
+                                    calculateCardRotation(index, order.size, expanded)
+                            }.toSet()
+                            isRotated = expanded
                         }
-                        delay(ROTATION_DURATION.toLong())
+                        snapshotFlow { pendingRotations.isEmpty() }.first { it }
                     } finally {
+                        pendingRotations = emptySet()
                         step = SwapStep.IDLE
                         busy = false
                     }
@@ -98,7 +120,8 @@ fun AnimatedCardStack(cards: List<CardData>) {
                         cardData = cards[id],
                         targetRotation = rotation,
                         offsetX = if (moving) distance * movement.value * cos(radians).toFloat() else 0f,
-                        offsetY = if (moving) distance * movement.value * sin(radians).toFloat() else 0f
+                        offsetY = if (moving) distance * movement.value * sin(radians).toFloat() else 0f,
+                        onRotationFinished = { pendingRotations = pendingRotations - id }
                     )
                 }
             }
