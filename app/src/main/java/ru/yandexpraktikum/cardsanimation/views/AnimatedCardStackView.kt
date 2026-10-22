@@ -6,6 +6,8 @@ import android.view.Gravity
 import android.widget.FrameLayout
 import ru.yandexpraktikum.cardsanimation.animation.*
 import ru.yandexpraktikum.cardsanimation.model.CardData
+import android.view.GestureDetector
+import android.view.MotionEvent
 
 class AnimatedCardStackView @JvmOverloads constructor(
     context: Context,
@@ -52,5 +54,53 @@ class AnimatedCardStackView @JvmOverloads constructor(
                 }
             } else card.rotation = rotation
         }
+    }
+
+    private var horizontalDragOffset = 0f
+    private var verticalDragOffset = 0f
+    private var gestureHandled = false
+    private val gestureDetector = GestureDetector(context,
+        object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent) = true
+            override fun onSingleTapUp(e: MotionEvent): Boolean = performClick()
+            override fun onScroll(
+                e1: MotionEvent?, e2: MotionEvent, distanceX: Float, distanceY: Float
+            ): Boolean {
+                horizontalDragOffset -= distanceX
+                verticalDragOffset -= distanceY
+                return true
+            }
+            override fun onFling(
+                e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float
+            ): Boolean {
+                classifySwipe(velocityX, velocityY, 800 * density)?.let {
+                    gestureHandled = true
+                    handleSwipe(it)
+                }
+                return true
+            }
+        })
+
+    override fun onInterceptTouchEvent(event: MotionEvent) = true
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            horizontalDragOffset = 0f
+            verticalDragOffset = 0f
+            gestureHandled = false
+        }
+        gestureDetector.onTouchEvent(event)
+        if (event.actionMasked == MotionEvent.ACTION_UP) handleDragEnd()
+        return true
+    }
+
+    private fun handleDragEnd() {
+        if (!gestureHandled) {
+            classifySwipe(horizontalDragOffset, verticalDragOffset, 40 * density)?.let(::handleSwipe)
+        }
+    }
+
+    private fun handleSwipe(swipe: Swipe) {
+        android.util.Log.d("CardStack", "Swipe: $swipe")
     }
 }
