@@ -1,103 +1,217 @@
 package ru.yandexpraktikum.cardsanimation.views
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.AnimatorSet
+import android.animation.ObjectAnimator
 import android.content.Context
 import android.util.AttributeSet
+import android.view.GestureDetector
+import android.view.Gravity
+import android.view.MotionEvent
 import android.widget.FrameLayout
+import ru.yandexpraktikum.cardsanimation.animation.*
 import ru.yandexpraktikum.cardsanimation.model.CardData
+import kotlin.math.cos
+import kotlin.math.sin
 
 class AnimatedCardStackView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null,
     defStyleAttr: Int = 0
 ) : FrameLayout(context, attrs, defStyleAttr) {
-
     private var cardDataList: List<CardData> = emptyList()
     private val cards = mutableListOf<AnimatedCardView>()
     private var isRotated = false
+    private var step = SwapStep.IDLE
+    private var animator: AnimatorSet? = null
+    private var horizontalDragOffset = 0f
+    private var verticalDragOffset = 0f
+    private var gestureHandled = false
+    private var gestureAccepted = false
+    private val density get() = resources.displayMetrics.density
+    private val busy get() = step != SwapStep.IDLE || animator != null
 
-    fun setCards(newCardDataList: List<CardData>) {
-        cardDataList = newCardDataList
-        setupCards()
+    private val gestureDetector = GestureDetector(context,
+        object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent) = true
+
+            override fun onSingleTapUp(e: MotionEvent): Boolean {
+                if (gestureAccepted && !busy) {
+                    gestureHandled = true
+                    performClick()
+                }
+                return true
+            }
+
+            override fun onScroll(
+                e1: MotionEvent?, e2: MotionEvent, distanceX: Float, distanceY: Float
+            ): Boolean {
+                horizontalDragOffset -= distanceX
+                verticalDragOffset -= distanceY
+                return true
+            }
+
+            override fun onFling(
+                e1: MotionEvent?, e2: MotionEvent, velocityX: Float, velocityY: Float
+            ): Boolean {
+                if (gestureAccepted && !gestureHandled && !busy) {
+                    classifySwipe(velocityX, velocityY, 800f * density)?.let {
+                        gestureHandled = true
+                        handleSwipe(it)
+                    }
+                }
+                return true
+            }
+        })
+
+    init {
+        isClickable = true
+        clipChildren = false
+        clipToPadding = false
     }
 
-    private fun setupCards() {
-        clearCards()
-        cardDataList.forEachIndexed { index, cardData ->
-            val cardView = AnimatedCardView(context).apply {
-                setCardData(cardData)
+    fun setCards(newCardDataList: List<CardData>) {
+        cancelAnimation()
+        cardDataList = newCardDataList.toList()
+        cards.clear()
+        removeAllViews()
+        isRotated = false
+        cardDataList.forEachIndexed { index, data ->
+            val card = AnimatedCardView(context).apply {
+                setCardData(data)
                 setStackPosition(index)
             }
-            cards.add(cardView)
-            addView(cardView)
+            cards.add(card)
+            addView(card, LayoutParams((100 * density).toInt(), (160 * density).toInt(), Gravity.CENTER))
         }
-        // Возврат в исходное положение
-        isRotated = false
         updateCardPositions()
     }
 
-    private fun clearCards() {
-        cards.clear()
-        removeAllViews()
-    }
-
     private fun updateCardPositions() {
-        val cardCount = cards.size
-
-        cards.forEachIndexed { index, cardView ->
-            // Расчёт расположения карт в исходной позиции
-            val baseRotation = if (cardCount > 1) {
-                val angleStep = 45f / (cardCount - 1)
-                22.5f - (index * angleStep)
-            } else {
-                0f
-            }
-
-            // Расчёт финальной позиции (для эффекта раскрытой колоды карт)
-            val targetRotation = if (isRotated) {
-                val angleStep = if (cardCount > 1) 180f / (cardCount - 1) else 0f
-                90f - (index * angleStep)
-            } else {
-                baseRotation
-            }
-
-            val cardWidth = 100f * resources.displayMetrics.density
-            val cardHeight = 160f * resources.displayMetrics.density
-            val sharedX = width / 2f - cardWidth / 2f
-            val sharedY = height / 2f - cardHeight / 2f
-
-            cardView.x = sharedX
-            cardView.y = sharedY
-
-            cardView.pivotX = cardWidth / 2f
-            cardView.pivotY = cardHeight
-
-            // TODO: [Задание 1] Замените на метод, который анимирует движение карты
-            cardView.rotation = targetRotation
+        cards.forEachIndexed { index, card ->
+            val rotation = calculateCardRotation(index, cards.size, isRotated)
+            card.setStackPosition(index)
+            card.elevation = index * density
+            card.rotation = rotation
         }
     }
 
-    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
-        super.onLayout(changed, left, top, right, bottom)
-        if (changed) {
-            updateCardPositions()
+    override fun onInterceptTouchEvent(event: MotionEvent) = true
+
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            horizontalDragOffset = 0f
+            verticalDragOffset = 0f
+            gestureHandled = false
+            gestureAccepted = !busy
+            parent?.requestDisallowInterceptTouchEvent(true)
         }
+        gestureDetector.onTouchEvent(event)
+        when (event.actionMasked) {
+            MotionEvent.ACTION_UP -> {
+                handleDragEnd()
+                parent?.requestDisallowInterceptTouchEvent(false)
+            }
+            MotionEvent.ACTION_CANCEL -> {
+                gestureAccepted = false
+                parent?.requestDisallowInterceptTouchEvent(false)
+            }
+        }
+        return true
+    }
+
+    override fun performClick(): Boolean {
+        super.performClick()
+        if (!busy) handleSwipe(if (isRotated) Swipe.DOWN else Swipe.UP)
+        return true
+    }
+
+    private fun handleDragEnd() {
+        if (gestureAccepted && !gestureHandled && !busy) {
+            classifySwipe(horizontalDragOffset, verticalDragOffset, 40 * density)?.let {
+                gestureHandled = true
+                handleSwipe(it)
+            }
+        }
+        gestureAccepted = false
+    }
+
+    private fun handleSwipe(swipe: Swipe) {
+        when (swipe) {
+            Swipe.HORIZONTAL -> if (cards.size > 1) startCardSwapAnimation(cards.first())
+            Swipe.UP, Swipe.DOWN -> {
+                isRotated = swipe == Swipe.UP
+                animateRotations()
+            }
+        }
+    }
+
+    private fun animateRotations(onComplete: () -> Unit = {}) {
+        runAnimation(cards.mapIndexed { index, card ->
+            card.createRotationAnimator(calculateCardRotation(index, cards.size, isRotated))
+        }, ROTATION_DURATION.toLong(), onComplete)
     }
 
     private fun startCardSwapAnimation(bottomCard: AnimatedCardView) {
-        // TODO: [Задание 5] Добавьте анимацию перетасовки карт
-        // На данном этапе просто быстро двигаем нижнюю карту наверх
-        cardDataList = reorderCards(cardDataList)
-        setupCards()
+        val radians = Math.toRadians(bottomCard.rotation.toDouble())
+        val distance = 50 * density
+        step = SwapStep.MOVE_OUT
+        runAnimation(listOf(
+            ObjectAnimator.ofFloat(bottomCard, "translationX", distance * cos(radians).toFloat()),
+            ObjectAnimator.ofFloat(bottomCard, "translationY", distance * sin(radians).toFloat())
+        ), 300) {
+            step = SwapStep.MOVE_TO_TOP
+            bottomCard.cardView.cardElevation = (4 + cards.size) * density
+            bottomCard.elevation = cards.size * density
+            bottomCard.bringToFront()
+            runAnimation(listOf(
+                ObjectAnimator.ofFloat(bottomCard, "translationX", 0f),
+                ObjectAnimator.ofFloat(bottomCard, "translationY", 0f)
+            ), 300) {
+                step = SwapStep.SETTLE
+                cardDataList = reorderCards(cardDataList)
+                cards.removeAt(0)
+                cards.add(bottomCard)
+                cards.forEachIndexed { index, card ->
+                    card.setStackPosition(index)
+                    card.elevation = index * density
+                }
+                animateRotations { step = SwapStep.IDLE }
+            }
+        }
     }
 
-    // Простая функция перестановки карт
-    fun reorderCards(cards: List<CardData>): List<CardData> {
-        return cards.drop(1) + cards.first()
+    private fun runAnimation(parts: List<Animator>, duration: Long, onComplete: () -> Unit) {
+        val set = AnimatorSet()
+        set.playTogether(parts)
+        set.duration = duration
+        set.addListener(object : AnimatorListenerAdapter() {
+            private var cancelled = false
+            override fun onAnimationCancel(animation: Animator) { cancelled = true }
+            override fun onAnimationEnd(animation: Animator) {
+                if (animator === set) animator = null
+                if (!cancelled) onComplete()
+            }
+        })
+        animator = set
+        set.start()
     }
-    // TODO: [Задание 2] Добавьте обработку жестов
-    // Подсказка: Используйте GestureDetector с методом onFling для обработки свайпов
 
-    // TODO: [Задание 3] Добавьте обработку вертикальных свайпов (вверх/вниз)
+    private fun cancelAnimation() {
+        animator?.cancel()
+        animator = null
+        step = SwapStep.IDLE
+        cards.forEach {
+            it.animate().cancel()
+            it.translationX = 0f
+            it.translationY = 0f
+        }
+    }
 
-    // TODO: [Задание 4] Добавьте обработку горизонтальных свайпов (влево/вправо)
+    override fun onDetachedFromWindow() {
+        cancelAnimation()
+        updateCardPositions()
+        super.onDetachedFromWindow()
+    }
 }

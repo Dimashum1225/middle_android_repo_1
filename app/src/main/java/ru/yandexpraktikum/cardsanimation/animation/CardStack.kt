@@ -1,0 +1,22 @@
+package ru.yandexpraktikum.cardsanimation.animation
+
+import kotlin.math.abs
+
+internal const val ROTATION_DURATION = 300
+internal enum class SwapStep { IDLE, MOVE_OUT, MOVE_TO_TOP, SETTLE }
+internal enum class Swipe { UP, DOWN, HORIZONTAL }
+
+internal fun classifySwipe(x: Float, y: Float, threshold: Float): Swipe? = when {
+    abs(x) > abs(y) && abs(x) >= threshold -> Swipe.HORIZONTAL
+    abs(y) > abs(x) && abs(y) >= threshold -> if (y < 0) Swipe.UP else Swipe.DOWN
+    else -> null
+}
+
+fun calculateCardRotation(cardIndex: Int, cardCount: Int, isRotated: Boolean): Float {
+    if (cardCount <= 1) return 0f
+    val spread = if (isRotated) 180f else 45f
+    return spread / 2 - cardIndex * spread / (cardCount - 1)
+}
+
+fun <T> reorderCards(cards: List<T>): List<T> =
+    if (cards.size < 2) cards else cards.drop(1) + cards.first()
