@@ -104,7 +104,15 @@ class AnimatedCardStackView @JvmOverloads constructor(
         when (swipe) {
             Swipe.UP -> { isRotated = true; updateCardPositions(true) }
             Swipe.DOWN -> { isRotated = false; updateCardPositions(true) }
-            Swipe.HORIZONTAL -> Unit
+            Swipe.HORIZONTAL -> if (cards.size > 1) startCardSwapAnimation()
         }
+    }
+
+    private fun startCardSwapAnimation() {
+        cardDataList = reorderCards(cardDataList)
+        val bottom = cards.removeAt(0)
+        cards.add(bottom)
+        bottom.bringToFront()
+        updateCardPositions(false)
     }
 }

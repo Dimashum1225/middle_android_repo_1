@@ -24,7 +24,7 @@ fun AnimatedCardStack(cards: List<CardData>) {
         when (swipe) {
             Swipe.UP -> isRotated = true
             Swipe.DOWN -> isRotated = false
-            Swipe.HORIZONTAL -> Unit
+            Swipe.HORIZONTAL -> order = reorderCards(order)
         }
     })
     Box(

@@ -18,3 +18,7 @@ internal fun classifySwipe(x: Float, y: Float, threshold: Float): Swipe? = when 
     abs(y) > abs(x) && abs(y) >= threshold -> if (y < 0) Swipe.UP else Swipe.DOWN
     else -> null
 }
+
+
+fun <T> reorderCards(cards: List<T>): List<T> =
+    if (cards.size < 2) cards else cards.drop(1) + cards.first()
